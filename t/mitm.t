@@ -8,7 +8,7 @@ eval{use Test::More $min_tpm}; # possible that a earlier version would work
 if($@){
   plan skip_all => "Test::More $min_tpm not installed";
 }else{
-  plan tests => 7;
+  plan tests => 8;
 }
 
 use NET::MitM;
@@ -246,19 +246,23 @@ subtest "MitM with readwrite callbacks - parallel" => sub {
       return 0;
     }
     my $mitm = NET::MitM->new('localhost',$echo_port,$port2) || BAIL_OUT("failed to start MitM: $!");
+    $mitm->timer_callback(0,\&do_once);
+    my ($interval,$callback) = $mitm->timer_callback();
+    is($interval,1); # sanity check - mitm disallows an interval of exactly 0
     $mitm->timer_callback(2,\&do_once);
     $mitm->name("mitm-$port2");
-    my ($interval,$callback) = $mitm->timer_callback();
+    ($interval,$callback) = $mitm->timer_callback();
     is($interval,2);
     is($callback,\&do_once);
     my $t1 = time();
     alarm 5; # if something goes wrong, don't silently hang forever - user may still need to ^C, but at least tell them
-      $mitm->go();
+    $mitm->go();
     alarm 0;
     my $t2 = time();
     my $t_diff=$t2-$t1;
-    ok($t_diff >= 1, "go() took $t_diff seconds, should take at least 1 second (strictly should take 2, but allow +/- 1)");
-    ok($t_diff <= 3, "go() took $t_diff seconds, should take no more than 3 seconds (strictly should take 2, but allow +/- 1)");
+    # without Time::HiRes, is only accurate to the second, and potentially not even that accurate
+    ok($t_diff >= 1, "go() took $t_diff seconds, should take at least 1 second (hopefully, 2)");
+    ok($t_diff <= 3, "go() took $t_diff seconds, should take no more than 3 seconds (hopefully, 2)");
     sub do_till_done(){
       return !$done;
     }
@@ -284,6 +288,39 @@ subtest "MitM with readwrite callbacks - parallel" => sub {
     is(scalar(@{$mitm->{children}}),0,"closing client should terminate children"); # note - breaks encapsulation
     $mitm->_destroy();
     # TODO how to test that all ports have been properly closed? lsof? alloc a file handle and check it has value #4?
+  };
+}
+
+SKIP: {
+  eval { use Time::HiRes qw(time sleep)};
+  if($@){
+    skip "Time::HiRes, which is not installed, is required for sub-second accuracy of timer_interval. You may still specify fractions of a second, MitM will out by up to a second each time, but it will average out. If this is not precise enough, please install Time::HiRes.\n";
+  }
+  my $to_go=10;
+  subtest 'timer_interval precision'=>sub {
+    my $port2=$next_port++;
+    my $mitm = NET::MitM->new('localhost',$echo_port,$port2) || BAIL_OUT("failed to start MitM: $!");
+    $mitm->verbose(2);
+    sub do_til_done(){
+      print "done=$to_go\n";
+      if(--$to_go>0){
+	sleep 0.1;
+	return 1;
+      }else{
+	return 0;
+      }
+    }
+    $mitm->timer_callback(.2,\&do_til_done);
+    $mitm->name("mitm-$port2");
+    my ($interval,$callback) = $mitm->timer_callback();
+    is($interval,.2);
+    is($callback,\&do_til_done);
+    my $t1 = time();
+    $mitm->go();
+    my $t2 = time();
+    my $t_diff=$t2-$t1;
+    # on my boxes, takes ~2.00125 seconds on windows, ~2.00098 on linx. Allow +/- 0.1. It averages out over a long run.
+    ok($t_diff >= 1.9 && $t_diff <= 2.1, "go() took $t_diff seconds, should take close to 2 seconds");
   };
 }
 

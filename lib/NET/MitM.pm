@@ -6,11 +6,11 @@ NET::MitM - Man in the Middle - connects a client and a server, giving visibilit
 
 =head1 VERSION
 
-Version 0.01_03
+Version 0.01
 
 =cut
 
-our $VERSION = '0.01_03';
+our $VERSION = '0.01';
 
 =head1 SYNOPSIS
 
@@ -26,7 +26,7 @@ MitM can also be used as a proxy to allow two processes on machines that cannot 
 
 There is an (as yet unreleased) sister module L<NET::Replay> that allows a MitM session to be replayed.
 
-=head3 For example
+=head3 Usage
 
 Assume the following script is running on the local machine:
 
@@ -39,7 +39,7 @@ A browser connecting to L<http://localhost:10080> will now cause MitM to open a 
 
 For another example, see samples/mitm.pl in the MitM distribution.
 
-=head2 Modifying messages on the fly.
+=head3 Modifying messages on the fly.
 
 However you deploy MitM, it will be virtually identical to having the client and server talk directly.  The difference will be that either the client and/or server will be at an address other than the one its counterpart believes it to be at.  Most programs ignore this, but sometimes it matters.
 
@@ -82,6 +82,7 @@ use FileHandle;
 use IO::Handle;
 use Carp;
 use strict;
+eval {use Time::HiRes qw(time)}; # only needed for high precision time_interval - will still work fine even if missing
 
 my $protocol = getprotobyname('tcp'); # TODO: make dynamic?
 
@@ -89,7 +90,7 @@ my $protocol = getprotobyname('tcp'); # TODO: make dynamic?
 
 Creates a new MitM
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -99,9 +100,11 @@ Creates a new MitM
 
 =item * local_port_num - the port number to listen on
 
+=item * Returns - a new MitM object
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 To keep a record of all messages sent:
 
@@ -138,15 +141,17 @@ sub new($$;$$$) {
 
 Listen on local_port, accept incoming connections, and forwards messages back and forth.
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * --none--
 
+=item * Returns --none--
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 When a connection on local_port is received a connect to remote_ip_address:remote_port is created and messages from the client are passed to the server and vice-versa. 
 
@@ -177,7 +182,7 @@ sub _set($;$) {
 
 Names the object - will be reported back in logging/debug
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -187,7 +192,7 @@ Names the object - will be reported back in logging/debug
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 For a minimal MitM:
 
@@ -207,7 +212,7 @@ sub name(;$) {
 
 Turns on/off reporting to stdout. 
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -217,7 +222,9 @@ Turns on/off reporting to stdout.
 
 =back
 
-=head3 Usage
+=head4 Usage
+
+Setting verbose changes the amount of information printed to stdout.
 
 =cut 
 
@@ -232,7 +239,7 @@ sub verbose(;$) {
 
 Set a callback function to monitor/modify each message sent to server
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -242,7 +249,7 @@ Set a callback function to monitor/modify each message sent to server
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 If client_to_server_callback is set, it will be called with a copy of each message to the server before it is sent.  Whatever the callback returns will be sent.
 
@@ -270,7 +277,7 @@ This would also work:
     sub peek($) {my $msg = shift; print LOG; return undef;}
     ...
 
-Whereas this is unlikely to do what you would want:
+But this is unlikely to do what you would want:
     sub peek($) {my $msg = shift; print LOG}
     ...
 
@@ -286,7 +293,7 @@ sub client_to_server_callback(;$) {
 
 Set a callback function to monitor/modify each message received from server
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -296,7 +303,7 @@ Set a callback function to monitor/modify each message received from server
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 If server_to_client_callback is set, it will be called with a copy of each message received from the server before it is sent to the client.  Whatever the callback returns will be sent.  
 
@@ -314,7 +321,7 @@ sub server_to_client_callback(;$) {
 
 Set a callback function to be called at regular intervals
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -325,15 +332,15 @@ Set a callback function to be called at regular intervals
 
 =back
 
-=head3 Usage
+=head4 Usage
 
-If the callback is set, it will be called every interval seconds.   Interval must be > 0 seconds.  It may be a fraction of a second.  If interval is passed as 0, or less, it will be reset to 1 second. This is to prevent accidental spin-wait. If you really want to spin-wait, pass an extremely small but non-zero interval.
+If the callback is set, it will be called every interval seconds.   Interval must be > 0 seconds.  It may be fractional.  If interval is passed as 0 it will be reset to 1 second. This is to prevent accidental spin-wait. If you really want to spin-wait, pass an extremely small but non-zero interval.
 
 If the callback returns false, mainloop will exit and return control to the caller.
 
 The time spent in callbacks is not additional to the specified interval - the timer callback will be called every interval seconds, or as close as possible to every interval seconds.  
 
-Please remember that if you have called fork before calling go() that the timer_callback method will be executed in a different process to the parent - the two processes will need to use some form of L<IPC> to communicate .
+Please remember that if you have called fork before calling go() that the timer_callback method will be executed in a different process to the parent - the two processes will need to use some form of L<IPC> to communicate.
 
 =cut 
 
@@ -341,6 +348,9 @@ sub timer_callback(;$) {
   my $this=shift;
   my $interval=shift;
   my $callback=shift;
+  if(defined $interval && $interval==0){
+    $interval=1;
+  }
   $interval=$this->_set("timer_interval", $interval);
   $callback=$this->_set("timer_callback", $callback);
   return ($interval, $callback);
@@ -350,7 +360,7 @@ sub timer_callback(;$) {
 
 Turns on/off running in parallel.
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -360,7 +370,7 @@ Turns on/off running in parallel.
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 If running in parallel, MitM starts a new process for each new connection using L<fork>.
 
@@ -371,6 +381,9 @@ Running in serial still allows multiple clients to run concurrently, as so long 
 sub parallel(;$) {
   my $this=shift;
   my $parallel=shift;
+  if($parallel){
+    $SIG{CLD} = "IGNORE"; 
+  }
   return $this->_set("parallel", $parallel);
 }
 
@@ -378,7 +391,7 @@ sub parallel(;$) {
 
 Turns on/off running in serial
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -388,7 +401,7 @@ Turns on/off running in serial
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 Calling this function with level=$l is exactly equivalent to calling parallel with level=!$l.
 
@@ -409,17 +422,17 @@ sub serial(;$) {
 
 log_file() sets, or clears, a log file.  
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * log_file_name - the name of the log file to be appended to. Passing "" disables logging. Passing nothing, or undef, returns the current log filename without change.
 
-=item * Returns: log file name
+=item * Returns - log file name
 
 =back
 
-=head3 Usage 
+=head4 Usage 
 
 The log file contains a record of connects and disconnects and messages as sent back and forwards.  Log entries are timestamped.  If the log file already exists, it is appended to.  
 
@@ -458,17 +471,17 @@ sub log_file(;$) {
 
 Use a small delay to defragment messages
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * Delay - seconds to wait - fractions of a second are OK
 
-=item * Returns: the current setting.
+=item * Returns - the current setting.
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 Under TCPIP, there is always a risk that large messages will be fragmented in transit, and that messages sent close together may be concatenated.
 
@@ -499,7 +512,7 @@ The remaining functions are supplimentary.  new_server() and new_client() provid
 
 Returns a very simple server, adequate for simple tasks.
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -507,11 +520,11 @@ Returns a very simple server, adequate for simple tasks.
 
 =item * callback_function - a reference to a function to be called when a message arrives - must return a response which will be returned to the client
 
-=item * Returns: a new server
+=item * Returns - a new server
 
 =back
 
-=head3 Usage
+=head4 Usage
 
   sub do_something($){
     my $in = shift;
@@ -548,7 +561,7 @@ Alternately, send_to_server() may be used to send a message, and read_from_serve
 
 Explicitly calling connect_to_server() is optional, but may be useful if you want to be sure the server is reachable.  If you don't call it explicitly, it will be called the first time a message is sent.
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -556,9 +569,11 @@ Explicitly calling connect_to_server() is optional, but may be useful if you wan
 
 =item * remote_port_num - the Port number of the server
 
+=item * Returns - a new client object
+
 =back
 
-=head3 Usage
+=head4 Usage
 
   my $client = NET::MitM::new_client("localhost", 8080) || die("failed to start test client: $!");
   $client->connect_to_server();
@@ -581,15 +596,17 @@ sub new_client($%) {
 
 log is a convenience function that prefixes output with a timestamp and PID information then writes to log_file.
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * string(s) - one or more strings to be logged
 
+=item * Returns --none--
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 log is a convenience function that prefixes output with a timestamp and PID information then writes to log_file.
 
@@ -601,21 +618,24 @@ sub log($@)
 {
   my $this=shift;
   printf {$this->{LOGFILE}} "%u/%s %s\n", $$, $this->{mydate}(), "@_" if $this->{LOGFILE};
+  return undef;
 }
 
 =head2 echo( string(s) )
 
 Prints to stdout and/or the logfile
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * string(s) - one or more strings to be echoed (printed)
 
+=item * Returns --none--
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 echo() is a convenience function that prefixes output with a timestamp and PID information and prints it to standard out if verbose is set and, if log_file() has been set, logs it to the log file.
 
@@ -634,23 +654,28 @@ sub echo($@)
   }else{
     printf("%s: %u/%s\n", $this->{name}, $$, join(" ", $this->{mydate}(), @_));
   }
+  return undef;
 }
 
 =head2 send_to_server( string(s) )
 
 send_to_server() sends a message to the server
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * string(s) - one or more strings to be sent
 
+=item * Return: true if successful
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 If a callback is set, it will be called before the message is sent.
+
+send_to_server() may 'die' if it detects a failure to send.
 
 =cut 
 
@@ -688,14 +713,14 @@ sub send_to_server($@)
     $msg = _do_callback( $this->{client_to_server_callback}, $msg );
     $this->_logmsg(">>>",$msg);
     confess "SERVER being null was unexpected" if !$this->{SERVER};
-    print({$this->{SERVER}} $msg) || die "Can't send to server: $?";
+    return print({$this->{SERVER}} $msg) || die "Can't send to server: $?";
 }
 
 =head2 send_to_client( string(s) )
 
 Sends a message to the client
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
@@ -705,7 +730,7 @@ Sends a message to the client
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 If a callback is set, it will be called before the message is sent.
 
@@ -725,17 +750,17 @@ sub send_to_client($@)
 
 Reads a message from the server
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * --none--
 
-=item * Returns: the message read, or undef if the server disconnected.  
+=item * Returns - the message read, or undef if the server disconnected.  
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 Blocks until a message is received.
 
@@ -758,17 +783,17 @@ sub read_from_server()
 
 Sends a message to the server and receives a response
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * the message(s) to be sent
 
-=item * Returns: message read, or undef if the server disconnected. 
+=item * Returns - message read, or undef if the server disconnected. 
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 Blocks until a message is received.  If the server does not always return exactly one message for each message it receives, send_and_receive() will either concatenate messages or block forever.
 
@@ -785,15 +810,17 @@ sub send_and_receive($)
 
 Connects to the server
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * --none--
 
+=item * Returns --none--
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 This method is automatically called when needed. It only needs to be called directly if you want to be sure that the connection to server succeeds before proceeding.
 
@@ -811,24 +838,26 @@ sub connect_to_server()
   connect($this->{SERVER}, $remote_port_address) or confess "Fatal: Can't connect to $this->{remote_ip_address}:$this->{remote_port_num} using $this->{SERVER}. $!"; # TODO Is die the way to go here? Not sure it isn't. Not sure it is.  TODO document error handling, one way or the other.
   $this->{SERVER}->autoflush(1);
   binmode($this->{SERVER});
+  return undef;
 }
 
 =head2 disconnect_from_server( )
 
 Disconnects from the server
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * --none--
 
+=item * Returns --none--
 
 =back
 
-=head3 Usage
+=head4 Usage
 
-Disconnection is normally triggered by the other party disconnecting, not by us. disconnect_from_server() is most useful with new_client(), and not otherwise supported.
+Disconnection is normally triggered by the other party disconnecting, not by us. disconnect_from_server() is only useful with new_client(), and not otherwise supported.
 
 =cut
 
@@ -837,10 +866,12 @@ sub disconnect_from_server()
   my $this=shift;
   $this->log("initiating disconnect");
   $this->_destroy();
+  return undef;
 }
 
 sub _pause($){
   select undef,undef,undef,shift;
+  return undef;
 }
 
 sub _message_from_client_to_server(){ # TODO Too many too similar sub names, some of which maybe should be public
@@ -864,6 +895,7 @@ sub _message_from_client_to_server(){ # TODO Too many too similar sub names, som
   }else{
     confess "$this->{name}: Did not expect to have neither a connection to a SERVER nor a server_callback";
   }
+  return undef;
 }
 
 sub _message_from_server_to_client(){ # TODO Too many too similar sub names
@@ -878,6 +910,7 @@ sub _message_from_server_to_client(){ # TODO Too many too similar sub names
     return;
   }
   $this->send_to_client($msg);
+  return undef;
 }
 
 sub _cull_child()
@@ -899,7 +932,12 @@ sub _cull_child()
 sub _main_loop()
 {
   my $this=shift;
-  my $last_time=time();
+  my $last_time;
+  my $target_time;
+  if($this->{timer_interval}&&$this->{timer_callback}){
+    $last_time=time();
+    $target_time=$last_time+$this->{timer_interval};
+  }
   # Main Loop
   mainloop: while(1)
   {
@@ -917,7 +955,14 @@ sub _main_loop()
     my $rout = $rin;
     my $delay;
     if($this->{timer_interval}){
-      $delay=$this->{timer_interval};
+      if(time() > $target_time){
+	$this->{timer_callback}() or last;
+	$last_time=$target_time;
+	$target_time+=$this->{timer_interval};
+      }
+      $delay=$target_time-time();
+      $delay=0 if($delay<0);
+      $this->echo("delay=$delay") if $this->{verbose} > 1;
     }else{
       $delay=undef;
     }
@@ -957,26 +1002,25 @@ sub _main_loop()
         }
       }
     }
-    if($this->{timer_callback}){
-      $this->{timer_callback}() or last;
-    }
   }
+  return undef;
 }
 
 =head2 hhmmss( )
 
 The default timestamp function - returns localtime in hh:mm:ss format
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * --none--
 
+=item * Returns - current time in hh:mm:ss format
 
 =back
 
-=head3 Usage
+=head4 Usage
 
 This function is, by default, called when a message is written to the log file.
 
@@ -994,24 +1038,26 @@ sub hhmmss()
 
 Override the standard hh:mm:ss datestamp
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * datestamp_callback - a reference to a function that returns a datestamp
 
+=item * Returns - a reference to the current or updated callback function
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 For example:
 
-  sub ymdhms {
+  sub yymmddhhmmss {
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
     return sprintf "%02d/%02d/%02d %02d:%02d:%02d", 
       $year+1900,$mon+1,$mday,$hour,$min,$sec;
   }
-  mydate(\&ymdhms);
+  mydate(\&yymmddhhmmss);
 
 =cut
 
@@ -1029,15 +1075,17 @@ sub mydate(;$)
 
 Listen on local_port and prepare to accept incoming connections
 
-=head3 Parameters
+=head4 Parameters
 
 =over
 
 =item * --none--
 
+=item * Return --none--
+
 =back
 
-=head3 Usage
+=head4 Usage
 
 This method is called by go(). It only needs to be called directly if go() is being bypassed for some reason.
 
@@ -1053,6 +1101,7 @@ sub listen()
   bind($this->{LISTEN}, sockaddr_in($this->{local_port_num}, INADDR_ANY)) or die "Fatal: Can't bind socket $this->{local_port_num}: $!";
   listen($this->{LISTEN},1) or die "Fatal: Can't listen to socket: $!";
   $this->echo("Waiting on port $this->{local_port_num}\n");
+  return undef;
 }
 
 sub _accept($)
@@ -1066,6 +1115,7 @@ sub _accept($)
   my ($client_port, $client_iaddr) = sockaddr_in( $client_paddr );
   $this->log("Connection accepted from", inet_ntoa($client_iaddr).":$client_port\n"); 
   $this->connect_to_server() if $this->{remote_ip_address};
+  return undef;
 }
 
 sub _new_child(){
@@ -1099,7 +1149,6 @@ sub _spawn_child(){
   if(!$this->{parallel}){
     return $child;
   }
-  $SIG{CLD} = "IGNORE"; # TODO: shouldn't assume that the caller is happy to have SIGCLD ignored. But nor should we assume the caller is happy to hav SIGCHD overridden.
   my $pid = fork();
   if(!defined $pid){
     # Error
@@ -1127,6 +1176,7 @@ sub go()
   my $this=shift;
   $this->listen();
   $this->_main_loop();
+  return undef;
 }
 
 sub _destroy()
@@ -1135,15 +1185,17 @@ sub _destroy()
   close $this->{CLIENT} if($this->{CLIENT});
   close $this->{SERVER} if($this->{SERVER});
   $this->{SERVER}=$this->{CLIENT}=undef;
+  return undef;
 }
 
 =head1 Exports
 
-MitM does not export any functions or variables.  It does set SIGCHD to IGNORE, and as advertised, it calls fork() if parallel() is turned on, which by default it is not.
+MitM does not export any functions or variables.  
+If parallel() is turned on, which by default it is not, MitM sets SIGCHD to IGNORE, and as advertised, it calls fork() once for each new connection.
 
 =head1 AUTHOR
 
-Ben AVELING, C<< <bena.aveling at optusnet.com.au> >>
+Ben AVELING, C<< <ben dot aveling at optusnet dot com dot au> >>
 
 =head1 BUGS
 
