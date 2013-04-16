@@ -190,16 +190,16 @@ subtest 'MitM with readonly callbacks'=>sub {
 
 sub manipulate1($)
 {
-  my $_ = shift;
-  s/a/A/;
-  return $_;
+  my $str = shift;
+  $str =~ s/a/A/;
+  return $str;
 }
 
 sub manipulate2($)
 {
-  my $_ = shift;
-  s/e/E/;
-  return $_;
+  my $str = shift;
+  $str =~ s/e/E/;
+  return $str;
 }
 
 sub with_readwrite($){

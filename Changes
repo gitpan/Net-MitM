@@ -1,6 +1,10 @@
 Revision history for Net-MitM
 
-2013-04-13 Version 0.01
+2013-04-15 Version 0.02
+  Don't use "my $_" construction in test suite.
+  No functional changes from 0.01.
+
+2013-04-13 Version 0.01.7745a5
   Add interval_callback
 
 2013-04-12 Version 0.01_03.b400fa
