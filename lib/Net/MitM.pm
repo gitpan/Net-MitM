@@ -1,20 +1,20 @@
-package NET::MitM;
+package Net::MitM;
 
 =head1 NAME
 
-NET::MitM - Man in the Middle - connects a client and a server, giving visibility of and control over messages passed.
+Net::MitM - Man in the Middle - connects a client and a server, giving visibility of and control over messages passed.
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03_02
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03_02';
 
 =head1 SYNOPSIS
 
-NET::MitM is designed to be inserted between a client and a server. It proxies all traffic through verbatum, and also copies that same data to a log file and/or a callback function, allowing a data session to be monitored, recorded, even altered on the fly.
+Net::MitM is designed to be inserted between a client and a server. It proxies all traffic through verbatum, and also copies that same data to a log file and/or a callback function, allowing a data session to be monitored, recorded, even altered on the fly.
 
 MitM acts as a 'man in the middle', sitting between the client and server.  To the client, MitM looks like the server.  To the server, MitM looks like the client.
 
@@ -22,16 +22,16 @@ MitM cannot be used to covertly operate on unsuspecting client/server sessions -
 
 When started, MitM opens a socket and listens for connections. When that socket is connected to, MitM opens another connection to the server.  Messages from either client or server are passed to the other, and a copy of each message is, potentially, logged.  Alternately, callback methods may be used to add business logic, including potentially altering the messages being passed.
 
-MitM can also be used as a proxy to allow two processes on machines that cannot 'see' each other to communicate via an intermediary machine that is visible to both.
+MitM can also be used as a proxy, allowing two processes on machines that cannot 'see' each other to communicate via an intermediary machine that is visible to both.
 
-There is an (as yet unreleased) sister module L<NET::Replay> that allows a MitM session to be replayed.
+There is an (as yet unreleased) sister module L<Net::Replay> that allows a MitM session to be replayed.
 
 =head3 Usage
 
 Assume the following script is running on the local machine:
 
-    use NET::MitM;
-    my $MitM = NET::MitM->new("cpan.org", 80, 10080);
+    use Net::MitM;
+    my $MitM = Net::MitM->new("cpan.org", 80, 10080);
     $MitM->log_file("MitM.log");
     $MitM->go();
 
@@ -39,7 +39,7 @@ A browser connecting to L<http://localhost:10080> will now cause MitM to open a 
 
 For another example, see samples/mitm.pl in the MitM distribution.
 
-=head3 Modifying messages on the fly.
+=head3 Modifying messages on the fly - a worked example.
 
 However you deploy MitM, it will be virtually identical to having the client and server talk directly.  The difference will be that either the client and/or server will be at an address other than the one its counterpart believes it to be at.  Most programs ignore this, but sometimes it matters.
 
@@ -51,12 +51,12 @@ Both of these problems can be worked around by modifying the messages being pass
 
 For example, assume the following script is running on the local machine:
 
-    use NET::MitM;
+    use Net::MitM;
     sub send_($) {$_[0] =~ s/Host: .*:\d+/Host: cpan.org/;}
     sub receive($) {$_[0] =~ s/cpan.org:\d+/localhost:10080/g;}
-    my $MitM = NET::MitM->new("cpan.org", 80, 10080);
-    $MitM->client_to_server_callback(\&send);
-    $MitM->server_to_client_callback(\&receive);
+    my $MitM = Net::MitM->new("cpan.org", 80, 10080);
+    $MitM->client_to_server_callback(\&send,callback_behaviour=>"modify");
+    $MitM->server_to_client_callback(\&receive,callback_behaviour=>"modify");
     $MitM->log_file("http_MitM.log");
     $MitM->go();
 
@@ -75,18 +75,18 @@ There is no good workaround for this, unless you can run an instance of MitM on 
 # Globals
 # #######
 
-use 5.002;
+use 5.002; # has been tested with 5.8.9. an earlier version failed with 5.6.2, but that has probably been fixed.
+
 use warnings FATAL => 'all';
 use Socket;
 use FileHandle;
 use IO::Handle;
 use Carp;
 use strict;
+#BEGIN{eval{require Time::HiRes; import Time::HiRes qw(time)}}; # only needed for high precision time_interval - will still work fine even if missing
 eval {use Time::HiRes qw(time)}; # only needed for high precision time_interval - will still work fine even if missing
 
-my $protocol = getprotobyname('tcp'); # TODO: make dynamic?
-
-=head2 new( remote_ip_address, local_port_num, remote_port_num )
+=head2 new( remote_ip_address, remote_port_num, local_port_num )
 
 Creates a new MitM
 
@@ -108,8 +108,8 @@ Creates a new MitM
 
 To keep a record of all messages sent:
 
-    use NET::MitM;
-    my $MitM = NET::MitM->new("www.cpan.org", 80, 10080);
+    use Net::MitM;
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
     $MitM->log_file("MitM.log");
     $MitM->go();
 
@@ -128,7 +128,7 @@ sub _new(){
   return \%this;
 }
 
-sub new($$;$$$) {
+sub new($$$;$) {
   my $class=shift;
   my $this=_new();
   $this->{remote_ip_address} = shift or croak "remote hostname/ip address missing";
@@ -153,14 +153,15 @@ Listen on local_port, accept incoming connections, and forwards messages back an
 
 =head4 Usage
 
-When a connection on local_port is received a connect to remote_ip_address:remote_port is created and messages from the client are passed to the server and vice-versa. 
+When a connection on local_port is received a connect to remote_ip_address:remote_port_num is created and messages from the client are passed to the server and vice-versa. 
 
 If parallel() was set, which is not the default, there will be a new process created for each such session.
 
 If any callback functions have been set, they will be called before each message is passed.
+
 If logging is on, messages will be logged.
 
-go() does not return. You may want to L<fork> before calling it.  There is no way to stop it from outside except using a signal to interrupt it.  This will probably change in a future release of MitM.
+By default, go() does not return.  The function L<stop_when_idle()> can be called to force go() to return.   You may want to L<fork> before calling it.  
 
 If new_server() was used instead of new(), messages from client are instead passed to the server callback function.
 
@@ -196,8 +197,8 @@ Names the object - will be reported back in logging/debug
 
 For a minimal MitM:
 
-    use NET::MitM;
-    my $MitM = NET::MitM->new("www.cpan.org", 80, 10080);
+    use Net::MitM;
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
     $MitM->go();
 
 =cut 
@@ -235,7 +236,7 @@ sub verbose(;$) {
   return $this->_set("verbose", $verbose);
 }
 
-=head2 client_to_server_callback( callback )
+=head2 client_to_server_callback( callback [callback_behaviour => behaviour] )
 
 Set a callback function to monitor/modify each message sent to server
 
@@ -245,22 +246,36 @@ Set a callback function to monitor/modify each message sent to server
 
 =item * callback - a reference to a function to be called for each message sent to server
 
+=item * callback_behaviour - explicitly sets the callback as readonly, modifying or conditional.
+
 =item * Returns - the current or new setting
 
 =back
 
 =head4 Usage
 
-If client_to_server_callback is set, it will be called with a copy of each message to the server before it is sent.  Whatever the callback returns will be sent.
+If a client_to_server_callback callback is set, it will be called with a copy of each message received from the client before it is sent to the server.  
+
+What the callback returns determines what will be sent, depending on the value of callback_behaviour:
+
+=over
+
+=item * If callback_behaviour = "readonly", the return value from the callback is ignored, and the original message is sent.
+
+=item * If callback_behaviour = "modify", the return value from the callback is sent instead of the original message, unless the return value is undef, in which case nothing is sent
+
+=item * If callback_behaviour = "conditional", which is the default, that the return value from the callback is sent instead of the original message, or if the return value is undef, then the original message is sent.  
+
+=back
 
 For example, to modify messages:
 
-    use NET::MitM;
+    use Net::MitM;
     sub send_($) {$_[0] =~ s/Host: .*:\d+/Host: cpan.org/;}
     sub receive($) {$_[0] =~ s/www.cpan.org(:\d+)?/localhost:10080/g;}
-    my $MitM = NET::MitM->new("www.cpan.org", 80, 10080);
-    $MitM->client_to_server_callback(\&send);
-    $MitM->server_to_client_callback(\&receive);
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
+    $MitM->client_to_server_callback(\&send, callback_behaviour=>"modify");
+    $MitM->server_to_client_callback(\&receive, callback_behaviour=>"modify");
     $MitM->go();
 
 If the callback is readonly, it should either return a copy of the original message, or undef. Be careful not to accidentally return something else - remember that perl methods implicitly returns the value of the last command executed.
@@ -268,30 +283,65 @@ If the callback is readonly, it should either return a copy of the original mess
 For example, to write messages to a log:
 
     sub peek($) {my $msg = shift; print LOG; return $msg;}
-    my $MitM = NET::MitM->new("www.cpan.org", 80, 10080);
-    $MitM->client_to_server_callback(\&peek);
-    $MitM->server_to_client_callback(\&peek);
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
+    $MitM->client_to_server_callback(\&peek, callback_behaviour=>"readonly");
+    $MitM->server_to_client_callback(\&peek, callback_behaviour=>"readonly");
     $MitM->go();
 
-This would also work:
-    sub peek($) {my $msg = shift; print LOG; return undef;}
+For historical reasons, "conditional" is the default.  It is not recommended, and may be deprecated in a future release.
+
+"conditional" may be used for readonly or modify type behaviour.  For readonly behaviour, either return the original message, or return null. For example:
+
+    sub peek($) {my $msg = shift; print LOG; return $msg;}
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
+    $MitM->client_to_server_callback(\&peek,callback_behaviour=>"readonly");
     ...
 
-But this is unlikely to do what you would want:
-    sub peek($) {my $msg = shift; print LOG}
+    sub peek($) {my $msg = shift; print LOG; return undef;}
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
+    $MitM->client_to_server_callback(\&peek,callback_behaviour=>"readonly");
     ...
+
+But be careful. This is unlikely to do what you would want:
+    sub peek($) {my $msg = shift; print LOG}
+    my $MitM = Net::MitM->new("www.cpan.org", 80, 10080);
+    $MitM->client_to_server_callback(\&peek,callback_behaviour=>"readonly");
+    ...
+
+Assuming print LOG succeeds, print will return a true value (probably 1), and MitM will send that value, not $msg.
 
 =cut 
 
-sub client_to_server_callback(;$) {
+sub _sanity_check_options($$)
+{
+  my $self=shift;
+  my $options=shift;
+  my $allowed=shift;
+  foreach my $key (keys %$options){
+    if(!$allowed->{$key}){
+      carp "Warning: $key not a supported option. Expected: ",join(" ",map {"'$_'"} keys %$options) unless defined $self->{verbose} && $self->{verbose}<=0;
+      return undef;
+    }
+    if( $options->{$key} !~ $allowed->{$key}){
+      carp "Warning: $key=$options->{$key} not a supported option.\n" unless $self->{verbose}<=0;
+      return undef;
+    }
+  }
+  return 1;
+}
+
+sub client_to_server_callback(;$%) {
   my $this=shift;
   my $callback=shift;
+  my %options=@_;
+  $this->_sanity_check_options(\%options,{callback_behaviour=>qr{^(readonly|modify|conditional)$}});
+  $this->_set("client_to_server_callback_behaviour", $options{callback_behaviour}) if $options{callback_behaviour};
   return $this->_set("client_to_server_callback", $callback);
 }
 
-=head2 server_to_client_callback( [callback] )
+=head2 server_to_client_callback( [callback] [,callback_behaviour=>behaviour] )
 
-Set a callback function to monitor/modify each message received from server
+Set a callback function to monitor/modify each message received from server.
 
 =head4 Parameters
 
@@ -299,21 +349,35 @@ Set a callback function to monitor/modify each message received from server
 
 =item * callback - a reference to a function to be called for each inward message
 
-=item * Returns - the current or new setting
+=item * callback_behaviour - explicitly sets the callback to readonly, modify or conditional.
+
+=item * Returns - the current or new setting of callback
 
 =back
 
 =head4 Usage
 
-If server_to_client_callback is set, it will be called with a copy of each message received from the server before it is sent to the client.  Whatever the callback returns will be sent.  
+If a server_to_client_callback callback is set, it will be called with a copy of each message received from the server before it is sent to the client.  
 
-If the callback is readonly, it should either return a copy of the original message, or undef. Be careful not to accidentally return something else - remember that perl methods implicitly returns the value of the last command executed.
+What the callback returns determines what will be sent, depending on the value of callback_behaviour:
+
+=over
+
+=item * If callback_behaviour = "readonly", the return value from the callback is ignored, and the original message is sent.
+
+=item * If callback_behaviour = "modify", the return value from the callback is sent instead of the original message, unless the return value is undef, in which case nothing is sent
+
+=item * If callback_behaviour = "conditional", which is the default, that the return value from the callback is sent instead of the original message, or if the return value is undef, then the original message is sent.  
+
+=back
 
 =cut 
 
-sub server_to_client_callback(;$) {
+sub server_to_client_callback(;$%) {
   my $this=shift;
   my $callback=shift;
+  my %options=@_;
+  $this->_set("server_to_client_callback_behaviour", $options{callback_behaviour}) if $options{callback_behaviour};
   return $this->_set("server_to_client_callback", $callback);
 }
 
@@ -326,6 +390,7 @@ Set a callback function to be called at regular intervals
 =over
 
 =item * interval - how often the callback function is to be called - must be > 0 seconds, may be fractional
+
 =item * callback - a reference to a function to be called every interval seconds
 
 =item * Returns - the current or new setting, as an array
@@ -334,15 +399,23 @@ Set a callback function to be called at regular intervals
 
 =head4 Usage
 
-If the callback is set, it will be called every interval seconds.   Interval must be > 0 seconds.  It may be fractional.  If interval is passed as 0 it will be reset to 1 second. This is to prevent accidental spin-wait. If you really want to spin-wait, pass an extremely small but non-zero interval.
+If the callback is set, it will be called every interval seconds.   
 
-If the callback returns false, mainloop will exit and return control to the caller.
+Interval must be > 0 seconds.  It may be fractional.  If interval is passed as 0 it will be reset to 1 second. This is to prevent accidental spin-wait. If you really want to spin-wait, pass an extremely small but non-zero interval.
 
 The time spent in callbacks is not additional to the specified interval - the timer callback will be called every interval seconds, or as close as possible to every interval seconds.  
 
-Please remember that if you have called fork before calling go() that the timer_callback method will be executed in a different process to the parent - the two processes will need to use some form of L<IPC> to communicate.
+Please remember that if you have called fork before calling go() that the timer_callback method will be executed in a different process to the parent - the two processes will need to use some form of IPC if they are to communicate.
+
+Historical note: Prior to version 0.03_01, if the callback returned false, mainloop would exit and return control to the caller. (FIXME It still does.)  stop_when_idle() can be used to persuade go() to exit. (FIXME check what happens if go() is called after stopping.  TODO Add an unconditional stop() method)
 
 =cut 
+
+#FIXME ignore return code from timer_callback. (Or deprecate this function and create a new one?)
+#FIXME check what happens if go() is called after stopping.  
+#TODO Add an unconditional stop() method
+#TODO - make callback optional - if the interval is set and the callback is not set, mainloop to return interval seconds after being called.   
+#TODO - Add an idle_timer callback
 
 sub timer_callback(;$) {
   my $this=shift;
@@ -467,6 +540,44 @@ sub log_file(;$) {
   return $this->{log_file};
 }
 
+=head2 stop_when_idle( boolean )
+
+Wait for remaining children to exit, then exit
+
+=head4 Parameters
+
+=over
+
+=item * flag - whether to exit when idle, or not. The default is true (exit when idle).
+
+=item * Returns the current status (true=exit when idle, false=keep running)
+
+=back
+
+=head4 Usage 
+
+Causes MitM or Server to return from go() once its last child exits. 
+
+If L<go()> is called after stop_when_idle() then L<stop_when_idle()> only takes effect after at least one child has been created.
+
+MitM or Server will exit immediately if there are currently no children or if MitM or Server is running in parrallel.
+Otherwise it will stop accepting new children and exit when the last child exits.
+
+=cut
+
+sub stop_when_idle
+{
+  my $this=shift;
+  if($this->{parent}){
+    return $this->{parent}->stop_when_idle(@_);
+  }else{
+    my $stop_when_idle=shift||1;
+    my $retval= $this->_set("stop_when_idle", $stop_when_idle);
+    $this->log("stop_when_idle set to: ",$this->{stop_when_idle}||'--undefined--');
+    return $retval;
+  }
+}
+
 =head2 defrag_delay( [delay] )
 
 Use a small delay to defragment messages
@@ -501,7 +612,34 @@ Eg:
 sub defrag_delay(;$) {
   my $this=shift;
   my $defrag_delay=shift;
-  return $this->_set("defrag_delays",$defrag_delay);
+  return $this->_set("defrag_delay",$defrag_delay);
+}
+
+=head2 protocol( [protocol] )
+
+Set protocol to tcp (default) or udp
+
+=head4 Parameters
+
+=over
+
+=item * protocol - either 'tcp' or 'udp'
+
+=item * Returns - the current setting.
+
+=back
+
+=head4 Usage
+
+Eg:
+    $MitM->protocol( 'udp' );
+
+=cut 
+
+sub protocol(;$) {
+  my $this=shift;
+  my $protocol=shift;
+  return $this->_set("protocol",$protocol);
 }
 
 =head1 SUPPORTING SUBROUTINES/METHODS
@@ -532,7 +670,7 @@ Returns a very simple server, adequate for simple tasks.
     return $out;
   }
 
-  my $server = NET::MitM::new_server(8080,\&do_something) || die;
+  my $server = Net::MitM->new_server(8080,\&do_something) || die;
   $server->go();
  
 The server returned by new_server has a method, go(), which tells it to start receiving messages (arbitrary strings).  Each string is passed to the callback_function, which is expected to return a single string, being the response to be returned to caller.  If the callback returns undef, the original message will be echoed back to the client.   
@@ -548,16 +686,16 @@ sub new_server($%) {
   my $this=_new();
   $this->{local_port_num} = shift or croak "no port number passed";
   $this->{server_callback} = shift or croak "no callback passed";
-  return bless $this;
+  return bless $this, $class;
 }
 
-=head2 new_client( remote_host, local_port_num )
+=head2 new_client( remote_host, remote_port_num )
 
-new client returns a very simple client, adequate for simple tasks
+new_client() returns a very simple client, adequate for simple tasks
 
-The server returned has a method, send_and_receive(), which sends a message and receives a response. 
+The client returned has a method, send_and_receive(), which sends a message and receives a response. 
 
-Alternately, send_to_server() may be used to send a message, and read_from_server() may be used to receive a message.
+Alternately, send_to_server() may be used to send a message, and receive_from_server() may be used to receive a message.
 
 Explicitly calling connect_to_server() is optional, but may be useful if you want to be sure the server is reachable.  If you don't call it explicitly, it will be called the first time a message is sent.
 
@@ -575,7 +713,7 @@ Explicitly calling connect_to_server() is optional, but may be useful if you wan
 
 =head4 Usage
 
-  my $client = NET::MitM::new_client("localhost", 8080) || die("failed to start test client: $!");
+  my $client = Net::MitM->new_client("localhost", 8080) || die("failed to start test client: $!");
   $client->connect_to_server();
   my $resp = $client->send_and_receive("hello");
   ...
@@ -589,8 +727,10 @@ sub new_client($%) {
   my $this=_new();
   $this->{remote_ip_address} = shift or croak "remote hostname/ip address missing";
   $this->{remote_port_num} = shift or croak "remote port number missing";
-  return bless $this;
+  return bless $this, $class;
 }
+
+#FIXME repetition in doco - clean it up
 
 =head2 log( string )
 
@@ -650,7 +790,8 @@ sub echo($@)
   if($_[0] =~ m/^[<>]{3}$/){
     my $prefix=shift;
     my $msg=join "", @_;
-    printf("%s: %u/%s %s %d bytes\n", $this->{name}, $$, $this->{mydate}(), $prefix, length($msg));
+    chomp $msg;
+    printf("%s: %u/%s %s %s\n", $this->{name}, $$, $this->{mydate}(), $prefix, $msg);
   }else{
     printf("%s: %u/%s\n", $this->{name}, $$, join(" ", $this->{mydate}(), @_));
   }
@@ -681,13 +822,22 @@ send_to_server() may 'die' if it detects a failure to send.
 
 sub _do_callback($$)
 {
-    my $callback = shift;
-    my $msg = shift;
-    if($callback){
-      my $new_msg = $callback->($msg);
-      $msg = $new_msg unless !defined $new_msg;
+  my $this=shift;
+  my $direction = shift;
+  my $msg = shift;
+  my $callback = $this->{$direction."_callback"};
+  if($callback){
+    $this->echo("calling $direction callback ($msg)\n") if $this->{verbose}>1;
+    my $new_msg = $callback->($msg,$this);
+#warn "~~~ ",$new_msg||"--undef--","\n";
+    my $callback_behaviour = $this->{$direction."_callback_behaviour"} || 'conditional';
+    #warn ("callback behaviour is ($callback_behaviour)\n") if $this->{verbose}>1;
+    if($callback_behaviour eq 'modify' || ($callback_behaviour ne 'readonly' && defined $new_msg)){
+      $msg = $new_msg;
     }
-    return $msg;
+  }
+#warn "+++ ",$msg||"--undef--","\n";
+  return $msg;
 }
 
 sub _logmsg
@@ -709,11 +859,15 @@ sub send_to_server($@)
     my $this = shift;
     my $msg = shift;
     $this->connect_to_server();
-    $this->log("calling server callback ($msg)\n") if $this->{client_to_server_callback} && $this->{verbose}>1;
-    $msg = _do_callback( $this->{client_to_server_callback}, $msg );
+    $msg = $this->_do_callback( 'client_to_server', $msg );
+    if(!defined $msg){
+      warn "client to server callback says no\n" if $this->{verbose}>1;
+      return undef;
+    }
     $this->_logmsg(">>>",$msg);
     confess "SERVER being null was unexpected" if !$this->{SERVER};
-    return print({$this->{SERVER}} $msg) || die "Can't send to server: $?";
+    print({$this->{SERVER}} $msg) || die "Can't send to server: $?";
+    return undef;
 }
 
 =head2 send_to_client( string(s) )
@@ -736,19 +890,29 @@ If a callback is set, it will be called before the message is sent.
 
 =cut 
 
-sub send_to_client($@)
+sub _send_to_client($@)
 {
     my $this = shift;
     my $msg = shift;
-    $this->echo("calling client callback ($msg)\n") if $this->{server_to_client_callback} && $this->{verbose}>1;
-    $msg = _do_callback( $this->{server_to_client_callback}, $msg );
     $this->_logmsg("<<<",$msg);
     return print({$this->{CLIENT}} $msg);
 }
 
-=head2 read_from_server( )
+sub send_to_client($@)
+{
+    my $this = shift;
+    my $msg = shift;
+    $msg = $this->_do_callback( 'server_to_client', $msg );
+    if(!defined $msg){
+      warn "server to client callback says no\n" if $this->{verbose}>1;
+      return undef
+    }
+    return $this->_send_to_client($msg);
+}
 
-Reads a message from the server
+=head2 receive_from_server( )
+
+Receives a message from the server
 
 =head4 Parameters
 
@@ -764,13 +928,15 @@ Reads a message from the server
 
 Blocks until a message is received.
 
+This method used to be called read_from_server(), and may still be called via that name.
+
 =cut 
 
-sub read_from_server()
+sub receive_from_server()
 {
   my $this=shift;
   my $msg;
-  sysread($this->{SERVER},$msg,100000);
+  sysread($this->{SERVER},$msg,100000) or confess "Fatal: sysread failed: $!";
   if(length($msg) == 0)
   {
     $this->echo("Server disconnected\n");
@@ -778,6 +944,14 @@ sub read_from_server()
   }
   return $msg;
 }
+
+=head2 read_from_server( ) [Deprecated]
+
+use instead: receive_from_server( )
+
+=cut 
+
+sub read_from_server() { my $this=shift;return $this->receive_from_server(); }
 
 =head2 send_and_receive( )
 
@@ -803,7 +977,7 @@ sub send_and_receive($)
 {
   my $this=shift;
   $this->send_to_server(@_);
-  return $this->read_from_server(@_);
+  return $this->receive_from_server();
 }
 
 =head2 connect_to_server( )
@@ -816,7 +990,7 @@ Connects to the server
 
 =item * --none--
 
-=item * Returns --none--
+=item * Returns true if successful 
 
 =back
 
@@ -824,21 +998,36 @@ Connects to the server
 
 This method is automatically called when needed. It only needs to be called directly if you want to be sure that the connection to server succeeds before proceeding.
 
+Changed in v0.03_01: return true/false if connect successful/unsuccessful. Previously died if connect fails.  Failure to resolve remote internet address/port address is still fatal.
+
 =cut
+
+# TODO would be nice to have a way to specify backup server(s) if 1st connection fails.  Also nice to have a way to specify round-robin servers for load balancing.
+
+sub _socket($)
+{
+  my $this=shift;
+  my $socket=shift;
+  my $protocol = $this->{protocol}||'tcp';
+  my $proto = getprotobyname($protocol) or die "Can't getprotobyname\n";
+  my $sock = $protocol eq 'udp' ? SOCK_DGRAM : SOCK_STREAM ;
+  
+  socket($this->{$socket}, PF_INET, $sock, $proto) or confess "Fatal: Can't create $protocol socket: $!";
+}
 
 sub connect_to_server()
 {
   my $this=shift;
   return if $this->{SERVER};
-  socket($this->{SERVER}, PF_INET, SOCK_STREAM, $protocol) or die "Can't create socket: $!";
+  $this->_socket("SERVER");
   confess "remote_ip_address unexpectedly not known" if !$this->{remote_ip_address};
   my $remote_ip_aton = inet_aton( $this->{remote_ip_address} ) or croak "Fatal: Cannot resolve internet address: '$this->{remote_ip_address}'\n";
   my $remote_port_address = sockaddr_in($this->{remote_port_num}, $remote_ip_aton ) or die "Fatal: Can't get port address: $!"; # TODO Is die the way to go here? Not sure it isn't. Not sure it is.
   $this->echo("Connecting to $this->{remote_ip_address}\:$this->{remote_port_num} [verbose=$this->{verbose}]\n");
-  connect($this->{SERVER}, $remote_port_address) or confess "Fatal: Can't connect to $this->{remote_ip_address}:$this->{remote_port_num} using $this->{SERVER}. $!"; # TODO Is die the way to go here? Not sure it isn't. Not sure it is.  TODO document error handling, one way or the other.
+  my $connect = connect($this->{SERVER}, $remote_port_address) or return undef;
   $this->{SERVER}->autoflush(1);
   binmode($this->{SERVER});
-  return undef;
+  return $connect;
 }
 
 =head2 disconnect_from_server( )
@@ -857,7 +1046,11 @@ Disconnects from the server
 
 =head4 Usage
 
-Disconnection is normally triggered by the other party disconnecting, not by us. disconnect_from_server() is only useful with new_client(), and not otherwise supported.
+disconnect_from_server closes any connections.
+
+It is only intended to be called on clients.  
+
+For MitM, like for any server, disconnection is best triggered by the other party disconnecting, not by the server. If a server disconnects while it has an active client connection open and exits or otherwise stops listening, it will not be able to reopen the same port for listening until the old connection has timed out which can take up to a few minutes.
 
 =cut
 
@@ -870,6 +1063,7 @@ sub disconnect_from_server()
 }
 
 sub _pause($){
+  # warning - select may return early if, for eg, process catches a signal (if it survives the signal)
   select undef,undef,undef,shift;
   return undef;
 }
@@ -885,7 +1079,7 @@ sub _message_from_client_to_server(){ # TODO Too many too similar sub names, som
   if(length($msg) == 0) { 
     $this->echo("Client disconnected\n");
     $this->_destroy();
-    return;
+    return undef;
   }
   # Send message to server, if any. Else 'send' to callback function and return result to client.
   if($this->{SERVER}){
@@ -898,16 +1092,45 @@ sub _message_from_client_to_server(){ # TODO Too many too similar sub names, som
   return undef;
 }
 
+=head2 graceful_shut_down( )
+
+Shut down the server gracefully
+
+=head4 Parameters
+
+=over
+
+=item * --none--
+
+=item * Returns --none--
+
+=back
+
+=head4 Usage
+
+graceful_shut_down closes the LISTEN socket so that no more clients will be accepted.  When the last client has exited, mainloop will exit.
+
+If running in parallel mode, graceful_shut_down will take effect immediately, the children will keep running.  This might change in a future release.
+
+=cut
+
+sub graceful_shut_down()
+{
+  my $this=shift;
+  $this->log("initiating disconnect");
+  $this->_destroy_fh("LISTEN");
+  return undef;
+}
+
 sub _message_from_server_to_client(){ # TODO Too many too similar sub names
   my $this=shift;
-# sleep to avoid splitting messages
+  # sleep to avoid splitting messages
   _pause($this->{defrag_delay}) if $this->{defrag_delay};
-# Read from SERVER and copy to CLIENT
-  my $msg = $this->read_from_server();
+  # Read from SERVER and copy to CLIENT
+  my $msg = $this->receive_from_server();
   if(!defined $msg){
-    $this->echo("Server disconnected\n");
     $this->_destroy();
-    return;
+    return undef;
   }
   $this->send_to_client($msg);
   return undef;
@@ -927,8 +1150,9 @@ sub _cull_child()
   confess "Child $child->{name} is finished, but I can't find it to clean it up";
 }
 
-# _main_loop is called by listeners and by their 'leave-home' children both. When called by listeners, it also includes stay at home children
+# _main_loop is called both by listeners and by forked children. When called by listeners, it also includes any children running in serial
 
+my $warned_about_deprecation=0;
 sub _main_loop()
 {
   my $this=shift;
@@ -939,7 +1163,7 @@ sub _main_loop()
     $target_time=$last_time+$this->{timer_interval};
   }
   # Main Loop
-  mainloop: while(1)
+  MAINLOOP: while(1)
   {
     # Build file descriptor list for select call 
     my $rin = "";
@@ -956,7 +1180,12 @@ sub _main_loop()
     my $delay;
     if($this->{timer_interval}){
       if(time() > $target_time){
-	$this->{timer_callback}() or last;
+	my $resp = $this->{timer_callback}($this);
+	if($resp){
+	  # TODO Add a deprecated warning?
+	}else{
+	  last MAINLOOP;
+	} 
 	$last_time=$target_time;
 	$target_time+=$this->{timer_interval};
       }
@@ -966,42 +1195,63 @@ sub _main_loop()
     }else{
       $delay=undef;
     }
-    select( $rout, "", "", $delay ); 
+    my $status=select( $rout, "", "", $delay ); 
+    if($status==-1){
+      warn "something happened - were we signalled? if so, why do we live?\n";
+    }
     if( $this->{LISTEN} && vec($rout,fileno($this->{LISTEN}),1) ) {
       my $child = $this->_spawn_child();
       push @{$this->{children}}, $child if $child;
       next;
     }
-    foreach my $each($this, @{$this->{children}}) {
+    CHILDREN: foreach my $each($this, @{$this->{children}}) {
       confess "We have a child with no CLIENT\n" if !$each->{CLIENT} && $each!=$this;
       if($each->{CLIENT} && vec($rout,fileno($each->{CLIENT}),1) ) {
         $each->_message_from_client_to_server(); # TODO Too many too similar sub names
         if(!$each->{CLIENT}){
+          $each->log("No Client\n");
           # client has disconnected
           if($each==$this){
             # we are the child - OK to exit
-            return; #might be better to die or exit at this point instead?
+            $each->log("We are the child");
+            return;
           }else{
-            # we are the parent - clean up child and keep going
+            # we are the parent - clean up child 
+            $each->log("We are the parent");
+            $each->log("stop_when_idle is: ",$this->{stop_when_idle}||'--undefined--');
+            $each->log("number of children (before cull): ",scalar(@{$this->{children}}));
             $this->_cull_child($each);
-            last; # _cull_child impacts the children array - not safe to continue without regenerating rout
+            $each->log("number of children (after cull): ",scalar(@{$this->{children}}));
+            # keep going?
+            if($this->{stop_when_idle} && (!@{$this->{children}})){
+              $this->log("idle exiting mainloop");
+              return undef;
+            }
+            $each->log("continuing: ",$this->{stop_when_idle}?'y':'n',!@{$this->{children}});
+            last CHILDREN; # _cull_child impacts the children array - not safe to continue without regenerating rout
           }
+        }else{
+          $each->echo("We still have a client") if $this->{verbose}>1;
         }
       }
       if($each->{SERVER} && vec($rout,fileno($each->{SERVER}),1) ) {
         $each->_message_from_server_to_client(); # TODO Too many too similar sub names
         if(!$each->{SERVER}){
-          # client has disconnected
+          # server has disconnected
           if($each==$this){
             # we are the child - OK to exit
             return; #might be better to die or exit at this point instead?
           }else{
             $this->_cull_child($each);
-            last; # _cull_child impacts the children array - not safe to continue without regenerating rout
+            if($this->{stop_when_idle} && !@{$this->{children}}){
+              $this->log("idle exiting mainloop - server disconnected");
+              return undef;
+            }
+            last CHILDREN; # _cull_child impacts the children array - not safe to continue without regenerating rout
           }
         }
       }
-    }
+    } # foreach CHILDREN
   }
   return undef;
 }
@@ -1096,10 +1346,9 @@ sub listen()
   my $this=shift;
   return if $this->{LISTEN};
   $this->echo(sprintf "Server %u listening on port %d (%s)\n",$$,$this->{local_port_num},$this->{parallel}?"parallel":"serial");
-  # open tcp/ip socket - see blue camel book pg 349
-  socket($this->{LISTEN}, PF_INET, SOCK_STREAM, $protocol) or die "Fatal: Can't create socket: $!";
-  bind($this->{LISTEN}, sockaddr_in($this->{local_port_num}, INADDR_ANY)) or die "Fatal: Can't bind socket $this->{local_port_num}: $!";
-  listen($this->{LISTEN},1) or die "Fatal: Can't listen to socket: $!";
+  $this->_socket("LISTEN");
+  bind($this->{LISTEN}, sockaddr_in($this->{local_port_num}, INADDR_ANY)) or confess "Fatal: $this->{name} can't bind LISTEN socket [$this->{LISTEN}] to $this->{local_port_num}: (",$!+0,") $!";
+  listen($this->{LISTEN},1) or confess "Fatal: Can't listen to socket: $!";
   $this->echo("Waiting on port $this->{local_port_num}\n");
   return undef;
 }
@@ -1109,12 +1358,16 @@ sub _accept($)
   # Accept a new connection 
   my $this=shift;
   my $LISTEN=shift;
-  my $client_paddr = accept($this->{CLIENT}, $LISTEN); 
+  my $client_paddr = accept($this->{CLIENT}, $LISTEN) or confess "accept failed: $!"; 
   $this->{CLIENT}->autoflush(1);
   binmode($this->{CLIENT});
   my ($client_port, $client_iaddr) = sockaddr_in( $client_paddr );
   $this->log("Connection accepted from", inet_ntoa($client_iaddr).":$client_port\n"); 
-  $this->connect_to_server() if $this->{remote_ip_address};
+  if($this->{remote_ip_address}){
+    $this->connect_to_server() or confess "Fatal: Can't connect to $this->{remote_ip_address}:$this->{remote_port_num}: $!";
+}
+  $this->{client_port} = $client_port;
+  $this->{client_iaddr} = inet_ntoa($client_iaddr);
   return undef;
 }
 
@@ -1123,10 +1376,12 @@ sub _new_child(){
   my $child=_new();
   my $all_good=1;
   foreach my $key (keys %{$parent}){
-    if($key=~m/^(LISTEN|children|connections|name|timer_interval|timer_callback)$/){
+    if($key=~m/^(LISTEN|children|connections|timer_interval|timer_callback|is_running|stop_when_idle)$/){
       # do nothing - these parameters are not inherited
-    }elsif($key =~ m/^(parallel|log_file|verbose|mydate|.*callback|(local|remote)_(port_num|ip_address))$/){
+    }elsif($key =~ m/^(parallel|log_file|verbose|mydate|(client_to_server|server_to_client|server)_callback(_behaviour)?|(local|remote)_(port_num|ip_address)|protocol)$/){
       $child->{$key}=$parent->{$key};
+    }elsif($key =~ m/^(name)$/){
+      $child->{$key}=$parent->{$key}.".jr";
     }elsif($key eq "LOGFILE"){
       # TODO might want to have a different logfile for each child, or at least, an option to do so.
       $child->{$key}=$parent->{$key};
@@ -1136,6 +1391,7 @@ sub _new_child(){
     }
   }
   die "Internal error in _new_child()" unless $all_good;
+  $child->{parent}=$parent;
   return bless $child;
 }
 
@@ -1158,11 +1414,12 @@ sub _spawn_child(){
     # This is the child process
     $child->echo(sprintf"Running %u",$$) if $child->{verbose}>1;
     confess "We have a child with no CLIENT\n" if !$child->{CLIENT};
-    # The active instanct of the parent is in a different process
-    # Ideally, we would have the parent go out of scope, but all we can do is clean up the bits that matter
+    # The active instance of the parent is potentially in a different process
+    # Ideally, we would have the parent go out of scope, but we can clean up the bits that matter
     close $this->{LISTEN};
+    $this->{LISTEN} = undef;
     $child->_main_loop();
-    $child->echo(sprintf"Exiting %u",$$) if $child->{verbose}>1;
+    $child->log(sprintf"Exiting %u",$$);
     exit;
   }else{
     # This is the parent process.  The active child instance is in its own process, we clean up what we can
@@ -1174,17 +1431,23 @@ sub _spawn_child(){
 sub go()
 {
   my $this=shift;
+  $this->log("go");
   $this->listen();
   $this->_main_loop();
+  $this->log("stopped");
   return undef;
 }
+
+#sub _destroy_fh() { my $this=shift; my $file_handle=shift; if($this->{$file_handle}){ $this->log( "$this->{name}: closing $file_handle socket ". ($this->{local_port_num}||"")."\n") if $this->{verbose}; close $this->{$file_handle} or die; $this->{$file_handle}=undef; } return undef; }
 
 sub _destroy()
 {
   my $this=shift;
+  # TODO? Tell children that they are being shutdown? 
+  close $this->{LISTEN} if($this->{LISTEN});
   close $this->{CLIENT} if($this->{CLIENT});
   close $this->{SERVER} if($this->{SERVER});
-  $this->{SERVER}=$this->{CLIENT}=undef;
+  $this->{LISTEN}=$this->{SERVER}=$this->{CLIENT}=undef;
   return undef;
 }
 
@@ -1199,15 +1462,15 @@ Ben AVELING, C<< <ben dot aveling at optusnet dot com dot au> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-NET-MitM at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=NET-MitM>.  I will be notified, and then you'll
+Please report any bugs or feature requests to C<bug-Net-MitM at rt.cpan.org>, or through
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Net-MitM>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
 
 =head1 SUPPORT
 
 You can find documentation for this module with the perldoc command.
 
-    perldoc NET::MitM
+    perldoc Net::MitM
 
 You can also look for information at:
 
@@ -1215,19 +1478,19 @@ You can also look for information at:
 
 =item * RT: CPAN's request tracker (report bugs here)
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=NET-MitM>
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Net-MitM>
 
 =item * AnnoCPAN: Annotated CPAN documentation
 
-L<http://annocpan.org/dist/NET-MitM>
+L<http://annocpan.org/dist/Net-MitM>
 
 =item * CPAN Ratings
 
-L<http://cpanratings.perl.org/d/NET-MitM>
+L<http://cpanratings.perl.org/d/Net-MitM>
 
 =item * Search CPAN
 
-L<http://search.cpan.org/dist/NET-MitM/>
+L<http://search.cpan.org/dist/Net-MitM/>
 
 =back
 
@@ -1286,4 +1549,4 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. SO THERE.
 
 =cut
 
-1; # End of NET::MitM
+1; # End of Net::MitM

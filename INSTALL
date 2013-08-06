@@ -1,0 +1,17 @@
+To install this module, run the following commands:
+
+Unix
+
+	perl Makefile.PL
+	make
+	make test
+	make install
+          (or sudo make install)
+
+Windows (Strawberry Perl)
+
+	perl Makefile.PL
+	dmake
+	dmake test
+	dmake install
+          (make sure you have sufficient rights)

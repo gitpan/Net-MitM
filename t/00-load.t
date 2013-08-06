@@ -5,7 +5,7 @@ use warnings FATAL => 'all';
 use Test::More tests => 1;
 
 BEGIN {
-    use_ok( 'NET::MitM' ) || print "Bail out!\n";
+    use_ok( 'Net::MitM' ) || print "Bail out!\n";
 }
 
-diag( "Testing NET::MitM $NET::MitM::VERSION, Perl $], $^X" );
+diag( "Testing Net::MitM $Net::MitM::VERSION, Perl $], $^X" );

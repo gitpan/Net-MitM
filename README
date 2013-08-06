@@ -1,6 +1,6 @@
-NET-MitM v0.01_02
+Net-MitM v0.01_03
 
-NET::MitM is designed to be inserted between a client and a server. It proxies all traffic through verbatum, and also copies that same data to a log file and/or a callback function, allowing a data session to be monitored, recorded and/or altered on the fly.
+Net::MitM is designed to be inserted between a client and a server. It proxies all traffic through verbatum, and also copies that same data to a log file and/or a callback function, allowing a data session to be monitored, recorded and/or altered on the fly.
 
 MitM acts as a 'man in the middle', sitting between the client and server.  To the client, MitM looks like the server.  To the server, MitM looks like the client.
 
@@ -18,29 +18,28 @@ To install this module, run the following commands:
 	make
 	make test
 	make install
-or
-	sudo make install
+          (or sudo make install)
 
 SUPPORT AND DOCUMENTATION
 
 After installing, you can find documentation for this module with the
 perldoc command.
 
-    perldoc NET::MitM
+    perldoc Net::MitM
 
 You can also look for information at:
 
     RT, CPAN's request tracker (report bugs here)
-        http://rt.cpan.org/NoAuth/Bugs.html?Dist=NET-MitM
+        http://rt.cpan.org/NoAuth/Bugs.html?Dist=Net-MitM
 
     AnnoCPAN, Annotated CPAN documentation
-        http://annocpan.org/dist/NET-MitM
+        http://annocpan.org/dist/Net-MitM
 
     CPAN Ratings
-        http://cpanratings.perl.org/d/NET-MitM
+        http://cpanratings.perl.org/d/Net-MitM
 
     Search CPAN
-        http://search.cpan.org/dist/NET-MitM/
+        http://search.cpan.org/dist/Net-MitM/
 
 
 LICENSE AND COPYRIGHT

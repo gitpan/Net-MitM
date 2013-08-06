@@ -6,13 +6,13 @@
    "dynamic_config" : 1,
    "generated_by" : "ExtUtils::MakeMaker version 6.64, CPAN::Meta::Converter version 2.112621",
    "license" : [
-      "unknown"
+      "artistic_2"
    ],
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
       "version" : "2"
    },
-   "name" : "NET-MitM",
+   "name" : "Net-MitM",
    "no_index" : {
       "directory" : [
          "t",
@@ -36,6 +36,6 @@
          }
       }
    },
-   "release_status" : "stable",
-   "version" : "0.02"
+   "release_status" : "testing",
+   "version" : "0.03_02"
 }

@@ -8,15 +8,15 @@ configure_requires:
   ExtUtils::MakeMaker: 0
 dynamic_config: 1
 generated_by: 'ExtUtils::MakeMaker version 6.64, CPAN::Meta::Converter version 2.112621'
-license: unknown
+license: artistic_2
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
-name: NET-MitM
+name: Net-MitM
 no_index:
   directory:
     - t
     - inc
 requires:
   perl: 5.006
-version: 0.02
+version: 0.03_02

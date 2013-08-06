@@ -9,7 +9,7 @@
 # ######################################################################
 
 use strict;
-use NET::MitM;
+use Net::MitM;
 my $usage = qq{Usage: perl MitM_pm2.pl remote_host remote_port [local_port]\n};
 my $remote_host=shift or die $usage;
 my $remote_port=shift or die $usage;
@@ -18,7 +18,7 @@ my $local_host=`hostname`;
 chomp $local_host;
 sub send($) {my $_ = shift;s/Host: [^:]*(:\d+)?/Host: $remote_host/;return $_}
 sub receive($) {my $_ = shift;s/$remote_host:\d+/$local_host:$local_port/g;return $_}
-my $MitM = NET::MitM->new($remote_host, $remote_port, $local_port};
+my $MitM = Net::MitM->new($remote_host, $remote_port, $local_port};
 $MitM->send_callback(\&send);
 $MitM->receive_callback(\&receive);
 $MitM->log_file("http_MitM.log");

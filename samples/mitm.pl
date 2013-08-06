@@ -6,11 +6,11 @@
 # ######################################################################
 
 use strict;
-use NET::MitM;
+use Net::MitM;
 my $usage = qq{Usage: perl MitM.pl remote_host remote_port [local_port]\n};
 my $remote_host=shift or die $usage;
 my $remote_port=shift or die $usage;
 my $local_port=shift or die $usage;
-my $MitM = NET::MitM->new($remote_host, $remote_port, $local_port);
+my $MitM = Net::MitM->new($remote_host, $remote_port, $local_port);
 $MitM->log_file("MitM.log");
 $MitM->go();
